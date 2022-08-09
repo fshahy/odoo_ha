@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: odoo-deployment
+  labels:
+    app: odoo
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: odoo
+  template:
+    metadata:
+      labels:
+        app: odoo
+    spec:
+      initContainers:
+        - name: get-extra-addons
+          image: ubuntu:xenial
+          command: ["/bin/sh", "-c"]
+          args:
+            [
+              "apt update; apt install -y git; git clone https://github.com/fshahy/hostname /data",
+            ]
+          volumeMounts:
+            - name: extra-addons
+              mountPath: /data
+      containers:
+        - name: odoo
+          image: odoo:15
+          ports:
+            - containerPort: 8069
+          env:
+            - name: "HOST"
+              value: "postgres-service"
+          envFrom:
+            - configMapRef:
+                name: postgres-configmap
+          volumeMounts:
+            - name: odoo-filestore
+              mountPath: /var/lib/odoo
+            - name: extra-addons
+              mountPath: /mnt/extra-addons
+      volumes:
+        - name: odoo-filestore
+          persistentVolumeClaim:
+            claimName: odoo-pvc
+        - name: extra-addons
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: odoo-service
+  labels:
+    app: odoo
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 8069
+      targetPort: 8069
+  selector:
+    app: odoo
